@@ -1,45 +1,27 @@
+```
 # Compiled and build artifacts
-*.ino.cpp
-*.ino.o
-*.elf
-*.hex
+*.o
+*.obj
 *.bin
-*.map
-*.d
-*.a
-*.so
-*.dylib
-*.dll
-*.exe
+*.hex
+*.elf
 *.out
 
 # Dependencies
 .pio/
 .platformio/
-node_modules/
-venv/
-.venv/
-__pycache__/
-*.egg-info/
-
-# Build directories
-build/
-dist/
-release/
-debug/
+lib/
+src/
 
 # Logs and temp files
 *.log
 *.tmp
 *.swp
-*.swo
-*.bak
-*.~*
 
 # Environment
 .env
 .env.local
-.env.*
+*.env.*
 
 # Editors
 .vscode/
@@ -47,66 +29,10 @@ debug/
 *.swp
 *.swo
 
-# OS
-.DS_Store
-Thumbs.db
-
-# Coverage
-.coverage
-coverage/
-htmlcov/
-
-# Python
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.so
-*.egg
-*.egg-info/
-dist/
-build/
-*.dist-info/
-.wheel/
-pip-log.txt
-pip-delete-this-directory.txt
-.tox/
-.coverage
-.nox/
-__pycache__/
-*.mo
-*.pot
-.pytest_cache/
-.hypothesis/
-.coverage*
-.pytest_cache/
-.mypy_cache/
-.ipynb_checkpoints/
-
-# Arduino
-*.hex
-*.bin
-*.elf
-*.map
+# Arduino-specific
+*.cpp.o
+*.S.o
 *.d
-*.a
-*.so
-*.dylib
-*.dll
-*.exe
-*.out
-build/
-.release/
-.pio/
-.platformio/
-lib/
-src/
-test/
-examples/
-.travis.yml
-appveyor.yml
-platformio.ini
-src/*
-lib/*
-test/*
-examples/*
+*.size
+*.map
+```
