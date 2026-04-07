@@ -1,27 +1,38 @@
 ```
 # Compiled and build artifacts
-*.o
-*.obj
-*.bin
+*.ino.cpp
 *.hex
 *.elf
-*.out
+*.bin
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+build/
+dist/
 
 # Dependencies
-.pio/
-.platformio/
+.libs/
 lib/
-src/
+dependencies/
+node_modules/
+venv/
+.venv/
+.env
+.env.local
+.env.*
 
 # Logs and temp files
 *.log
 *.tmp
 *.swp
-
-# Environment
-.env
-.env.local
-*.env.*
+*.swo
+*.bak
+*.~
+*~
 
 # Editors
 .vscode/
@@ -29,10 +40,7 @@ src/
 *.swp
 *.swo
 
-# Arduino-specific
-*.cpp.o
-*.S.o
-*.d
-*.size
-*.map
+# OS
+.DS_Store
+Thumbs.db
 ```
