@@ -5,39 +5,29 @@
  * 
  * НАЗНАЧЕНИЕ:
  * Эта версия программы позволяет тестировать все функции устройства БЕЗ
- * подключения реальных датчиков ЭЭГ и ЭМГ. Сигналы эмулируются через
- * последовательный порт (Serial) с компьютера.
+ * подключения реальных датчиков ЭЭГ и ЭМГ. Сигналы эмулируются внутри Arduino.
  * 
  * КАК ЭТО РАБОТАЕТ:
  * 1. Загрузите этот скетч в Arduino Mega
  * 2. Откройте Serial Monitor (115200 бод)
- * 3. Отправляйте команды для управления эмуляцией:
+ * 3. Вводите команды для управления сценариями:
  * 
  * КОМАНДЫ УПРАВЛЕНИЯ:
- *   E <значение>  - установить уровень ЭМГ (0-1023)
- *   B <значение>  - установить мощность бета-ритма (0.0-1.0)
- *   R             - начать калибровку заново
- *   S             - показать текущее состояние
- *   A             - автоматический режим (синусоидальная эмуляция)
- *   M             - ручной режим (вы вводите значения)
- * 
- * ПРИМЕРЫ:
- *   E 300         - установить ЭМГ = 300
- *   B 0.65        - установить бета-ритм = 0.65
- *   E 250 B 0.7   - установить оба значения сразу
- * 
- * АВТОМАТИЧЕСКИЙ РЕЖИМ (A):
- *   - ЭМГ плавно меняется от 200 до 500 (симуляция расслабления/напряжения)
- *   - Бета-ритм меняется от 0.3 до 0.8 (симуляция когнитивной нагрузки)
- *   - Период цикла: 20 секунд
+ *   SUCCESS    - Симуляция успешного выполнения (расслаблен + бета-ритм)
+ *   FAIL_EMG   - Симуляция провала по мышцам (напряжение лба)
+ *   FAIL_EEG   - Симуляция провала по ЭЭГ (нет бета-ритма)
+ *   A CYCLE    - Автоматический полный цикл (калибровка + тренинг)
+ *   I          - Показать текущее состояние (Info)
+ *   H          - Полная справка по командам
+ *   R          - Сброс и перезапуск калибровки
  * 
  * ОБОРУДОВАНИЕ:
  *   - Arduino Mega
- *   - Grove LED Bar v1.0 (пины 2, 3)
- *   - Сервопривод FS5103B (пин 9)
- *   - Датчики НЕ ТРЕБУЮТСЯ (эмулируются)
+ *   - Grove LED Bar v1.0 (пины 2, 3) - показывает прогресс открытия
+ *   - Сервопривод FS5103B (пин 9) - открывает крышку сундука
+ *   - Датчики НЕ ТРЕБУЮТСЯ (эмулируются программно)
  * 
- * ВЕРСИЯ: 3.0 (Test Mode)
+ * ВЕРСИЯ: 4.0 (Test Mode с новыми командами)
  * ============================================================================
  */
 
@@ -51,10 +41,6 @@ const int PIN_LED_DATA     = 2;   // Grove LED Bar DATA
 const int PIN_LED_CLK      = 3;   // Grove LED Bar CLOCK
 const int PIN_SERVO        = 9;   // Сервопривод
 
-// Пины датчиков НЕ используются в тестовом режиме
-// const int PIN_EEG          = A0;  
-// const int PIN_EMG          = A1;  
-
 // ============================================================================
 // ТАЙМИНГИ (в миллисекундах)
 // ============================================================================
@@ -62,7 +48,7 @@ const unsigned long TIME_CALIBRATION    = 30000;  // Калибровка: 30 с
 const unsigned long TIME_TRAINING       = 180000; // Тренинг: 3 минуты
 const unsigned long SERVO_INTERVAL      = 200;    // Обновление серво: 200 мс
 const unsigned long EMG_SMOOTH_WINDOW   = 500;    // Окно сглаживания ЭМГ: 500 мс
-const unsigned long SERIAL_INTERVAL     = 100;    // Отправка данных: 100 мс
+const unsigned long GRAPH_INTERVAL      = 200;    // Обновление графика: 200 мс
 
 // ============================================================================
 // ПАРАМЕТРЫ БИОУПРАВЛЕНИЯ
@@ -79,10 +65,6 @@ const float LID_SPEED_CLOSE      = 0.30;  // Быстрое закрытие (в
 const int SERVO_CLOSED           = 0;     // Закрыто
 const int SERVO_OPEN             = 90;    // Открыто
 const int LID_SUCCESS_ANGLE      = 54;    // 60% от 90° = 54° (критерий успеха)
-
-// Диапазон бета-ритма (Гц)
-const float BETA_FREQ_LOW        = 13.0;  // Для подростков (13-18 Гц)
-const float BETA_FREQ_HIGH       = 18.0;
 
 // ============================================================================
 // ГЛОБАЛЬНЫЕ ОБЪЕКТЫ
@@ -132,15 +114,13 @@ unsigned long lastServoUpdate = 0;
 // ============================================================================
 // ПЕРЕМЕННЫЕ ДЛЯ АВТОМАТИЧЕСКОГО РЕЖИМА
 // ============================================================================
-bool autoMode = true;        // true = авто, false = ручной
+bool autoCycleRunning = false;
 unsigned long autoStartTime = 0;
-const unsigned long AUTO_CYCLE_TIME = 20000;  // 20 секунд цикл
 
 // ============================================================================
-// ПЕРЕМЕННЫЕ ДЛЯ ОТПРАВКИ ДАННЫХ
+// ПЕРЕМЕННЫЕ ДЛЯ ОТРИСОВКИ ГРАФИКОВ
 // ============================================================================
-unsigned long lastSerialSend = 0;
-unsigned long lastStatusPrint = 0;
+unsigned long lastGraphUpdate = 0;
 
 // ============================================================================
 // ФУНКЦИЯ: Инициализация оборудования
@@ -157,6 +137,11 @@ void initHardware() {
   
   // Очистка буферов
   for (uint8_t i = 0; i < 20; i++) emgBuffer[i] = 0;
+  
+  Serial.begin(115200);
+  while (!Serial) {
+    ; // Ждём подключения Serial
+  }
 }
 
 // ============================================================================
@@ -203,29 +188,32 @@ void updateServo() {
 }
 
 // ============================================================================
-// ФУНКЦИЯ: Генерация значений в автоматическом режиме
+// ФУНКЦИЯ: Генерация значений для авто-цикла (калибровка + тренинг)
 // ============================================================================
-void updateAutoMode() {
+void updateAutoCycle() {
   unsigned long elapsed = millis() - autoStartTime;
-  float progress = (float)(elapsed % AUTO_CYCLE_TIME) / AUTO_CYCLE_TIME;
   
-  // ЭМГ: синусоида от 200 до 500
-  // Первые 10 сек - низкий ЭМГ (расслабление), следующие 10 сек - высокий
-  if (progress < 0.5) {
-    // Расслабление: 200-300
-    emgEmulated = 200 + (int)(100 * sin(progress * PI * 2));
-  } else {
-    // Напряжение: 400-500
-    emgEmulated = 400 + (int)(100 * sin((progress - 0.5) * PI * 2));
+  if (currentState == CALIBRATION) {
+    // Во время калибровки: средние значения с небольшим шумом
+    emgEmulated = 300 + random(-30, 31);
+    betaEmulated = 0.5 + (random(-50, 51) / 1000.0);
+  } 
+  else if (currentState == TRAINING) {
+    unsigned long trainingElapsed = elapsed - TIME_CALIBRATION;
+    float progress = (float)trainingElapsed / TIME_TRAINING;
+    
+    // Первые 2 минуты: хорошие значения (расслабление + бета-ритм)
+    // Последняя минута: возможны помехи
+    if (progress < 0.66) {
+      // Хорошие значения: низкий ЭМГ, высокий бета-ритм
+      emgEmulated = 250 + random(-20, 21);
+      betaEmulated = 0.7 + (random(-30, 31) / 1000.0);
+    } else {
+      // Небольшие колебания
+      emgEmulated = 280 + random(-40, 41);
+      betaEmulated = 0.65 + (random(-50, 51) / 1000.0);
+    }
   }
-  
-  // Бета-ритм: меняется от 0.3 до 0.8
-  // Максимум в середине каждого полуцикла
-  betaEmulated = 0.55 + 0.25 * sin(progress * PI * 4);
-  
-  // Добавляем небольшой шум
-  emgEmulated += random(-20, 21);
-  betaEmulated += (random(-50, 51) / 1000.0);
   
   // Ограничения
   if (emgEmulated < 0) emgEmulated = 0;
@@ -264,87 +252,45 @@ void parseCommand(String cmd) {
   
   if (cmd.length() == 0) return;
   
-  // Команда: E <значение>
-  if (cmd.startsWith("E ")) {
-    int val = cmd.substring(2).toInt();
-    if (val >= 0 && val <= 1023) {
-      emgEmulated = val;
-      Serial.print("# OK: EMG установлен в ");
-      Serial.println(val);
-    }
+  // Команда: SUCCESS - симуляция успешного выполнения
+  if (cmd == "SUCCESS") {
+    runSuccessScenario();
     return;
   }
   
-  // Команда: B <значение>
-  if (cmd.startsWith("B ")) {
-    float val = cmd.substring(2).toFloat();
-    if (val >= 0.0 && val <= 1.0) {
-      betaEmulated = val;
-      Serial.print("# OK: Beta установлен в ");
-      Serial.println(val, 3);
-    }
+  // Команда: FAIL_EMG - симуляция провала по мышцам
+  if (cmd == "FAIL_EMG") {
+    runFailEmgScenario();
     return;
   }
   
-  // Команда: E <val1> B <val2>
-  if (cmd.startsWith("E ") && cmd.indexOf(" B ") > 0) {
-    int spacePos = cmd.indexOf(" ");
-    int bPos = cmd.indexOf(" B ");
-    int eVal = cmd.substring(2, spacePos).toInt();
-    float bVal = cmd.substring(bPos + 3).toFloat();
-    
-    if (eVal >= 0 && eVal <= 1023 && bVal >= 0.0 && bVal <= 1.0) {
-      emgEmulated = eVal;
-      betaEmulated = bVal;
-      Serial.print("# OK: EMG=");
-      Serial.print(eVal);
-      Serial.print(", Beta=");
-      Serial.println(bVal, 3);
-    }
+  // Команда: FAIL_EEG - симуляция провала по ЭЭГ
+  if (cmd == "FAIL_EEG") {
+    runFailEegScenario();
     return;
   }
   
-  // Команда: R (сброс калибровки)
-  if (cmd == "R") {
-    currentState = CALIBRATION;
-    phaseStart = millis();
-    isCalibrated = false;
-    emgThreshold = 0;
-    betaThreshold = 0;
-    lidAngle = 0;
-    servo.write(SERVO_CLOSED);
-    bar.setLevel(0);
-    betaAboveCnt = 0;
-    validTimeCnt = 0;
-    Serial.println("# OK: Калибровка начата заново");
+  // Команда: A CYCLE или ACYCLE - автоматический полный цикл
+  if (cmd == "A CYCLE" || cmd == "ACYCLE") {
+    startAutoCycle();
     return;
   }
   
-  // Команда: S (статус)
-  if (cmd == "S") {
+  // Команда: I - показать текущее состояние (Info)
+  if (cmd == "I") {
     printStatus();
     return;
   }
   
-  // Команда: A (авторежим)
-  if (cmd == "A") {
-    autoMode = true;
-    autoStartTime = millis();
-    Serial.println("# OK: Автоматический режим включен");
-    return;
-  }
-  
-  // Команда: M (ручной режим)
-  if (cmd == "M") {
-    autoMode = false;
-    Serial.println("# OK: Ручной режим включен");
-    Serial.println("# Используйте команды: E <0-1023>, B <0.0-1.0>");
-    return;
-  }
-  
-  // Команда: H (помощь)
+  // Команда: H - полная справка
   if (cmd == "H" || cmd == "?") {
     printHelp();
+    return;
+  }
+  
+  // Команда: R - сброс и перезапуск калибровки
+  if (cmd == "R") {
+    resetSystem();
     return;
   }
   
@@ -356,19 +302,136 @@ void parseCommand(String cmd) {
 }
 
 // ============================================================================
+// ФУНКЦИЯ: Сценарий SUCCESS - успешное выполнение
+// ============================================================================
+void runSuccessScenario() {
+  Serial.println("\n=== ЗАПУСК СЦЕНАРИЯ: SUCCESS ===");
+  Serial.println("Симуляция: Испытуемый расслаблен + бета-ритм выше порога");
+  
+  resetSystem();
+  
+  // Устанавливаем низкий ЭМГ (расслабление) и высокий бета-ритм
+  emgEmulated = 250;
+  betaEmulated = 0.75;
+  
+  // Пропускаем калибровку мгновенно
+  emgThreshold = 400;  // Порог выше текущего значения
+  betaThreshold = 0.5; // Порог ниже текущего значения
+  isCalibrated = true;
+  currentState = TRAINING;
+  phaseStart = millis();
+  
+  Serial.println("Пороги установлены: ЭМГ < 400, Бета > 0.5");
+  Serial.println("Ожидайте открытия крышки...\n");
+}
+
+// ============================================================================
+// ФУНКЦИЯ: Сценарий FAIL_EMG - провал по мышцам
+// ============================================================================
+void runFailEmgScenario() {
+  Serial.println("\n=== ЗАПУСК СЦЕНАРИЯ: FAIL_EMG ===");
+  Serial.println("Симуляция: Испытуемый напрягает мышцы лба");
+  
+  resetSystem();
+  
+  // Устанавливаем высокий ЭМГ (напряжение)
+  emgEmulated = 600;
+  betaEmulated = 0.75;
+  
+  // Пропускаем калибровку мгновенно
+  emgThreshold = 400;  // Порог ниже текущего значения → провал
+  betaThreshold = 0.5;
+  isCalibrated = true;
+  currentState = TRAINING;
+  phaseStart = millis();
+  
+  Serial.println("Пороги установлены: ЭМГ < 400, Бета > 0.5");
+  Serial.println("Крышка будет закрываться из-за напряжения мышц!\n");
+}
+
+// ============================================================================
+// ФУНКЦИЯ: Сценарий FAIL_EEG - провал по ЭЭГ
+// ============================================================================
+void runFailEegScenario() {
+  Serial.println("\n=== ЗАПУСК СЦЕНАРИЯ: FAIL_EEG ===");
+  Serial.println("Симуляция: Нет бета-ритма (рассеянное внимание)");
+  
+  resetSystem();
+  
+  // Устанавливаем низкий ЭМГ (расслабление) но низкий бета-ритм
+  emgEmulated = 250;
+  betaEmulated = 0.3;
+  
+  // Пропускаем калибровку мгновенно
+  emgThreshold = 400;
+  betaThreshold = 0.5; // Порог выше текущего значения → провал
+  isCalibrated = true;
+  currentState = TRAINING;
+  phaseStart = millis();
+  
+  Serial.println("Пороги установлены: ЭМГ < 400, Бета > 0.5");
+  Serial.println("Крышка откроется, но драгоценные камни НЕ появятся!\n");
+}
+
+// ============================================================================
+// ФУНКЦИЯ: Запуск автоматического полного цикла
+// ============================================================================
+void startAutoCycle() {
+  Serial.println("\n=== ЗАПУСК АВТОМАТИЧЕСКОГО ЦИКЛА ===");
+  Serial.println("Будет выполнена полная симуляция: калибровка (30 сек) + тренинг (3 мин)");
+  Serial.println("Наблюдайте за графиками в Serial Plotter!\n");
+  
+  resetSystem();
+  autoCycleRunning = true;
+  autoStartTime = millis();
+  
+  // Начинаем с калибровки
+  currentState = CALIBRATION;
+  phaseStart = millis();
+}
+
+// ============================================================================
+// ФУНКЦИЯ: Сброс системы
+// ============================================================================
+void resetSystem() {
+  currentState = CALIBRATION;
+  phaseStart = millis();
+  isCalibrated = false;
+  emgThreshold = 0;
+  betaThreshold = 0;
+  lidAngle = 0;
+  servo.write(SERVO_CLOSED);
+  bar.setLevel(0);
+  betaAboveCnt = 0;
+  validTimeCnt = 0;
+  emgEmulated = 300;
+  betaEmulated = 0.5;
+  autoCycleRunning = false;
+  
+  // Очистка буфера ЭМГ
+  for (uint8_t i = 0; i < 20; i++) emgBuffer[i] = 0;
+  
+  Serial.println("# Система сброшена");
+}
+
+// ============================================================================
 // ФУНКЦИЯ: Печать справки
 // ============================================================================
 void printHelp() {
-  Serial.println("\n=== КОМАНДЫ УПРАВЛЕНИЯ ===");
-  Serial.println("E <0-1023>       - Установить уровень ЭМГ");
-  Serial.println("B <0.0-1.0>      - Установить мощность бета-ритма");
-  Serial.println("E <val> B <val>  - Установить оба значения");
-  Serial.println("R                - Начать калибровку заново");
-  Serial.println("S                - Показать текущее состояние");
-  Serial.println("A                - Автоматический режим (синусоидальная эмуляция)");
-  Serial.println("M                - Ручной режим (вы вводите значения)");
-  Serial.println("H или ?          - Эта справка");
-  Serial.println("=========================\n");
+  Serial.println("\n");
+  Serial.println("+-----------------------------------------------------------+");
+  Serial.println("|           КОМАНДЫ УПРАВЛЕНИЯ \"СУНДУК СОКРОВИЩ\"            |");
+  Serial.println("+-----------------------------------------------------------+");
+  Serial.println("| SUCCESS   - Симуляция УСПЕХА (расслаблен + бета-ритм)     |");
+  Serial.println("| FAIL_EMG  - Провал: напряжение мышц лба                   |");
+  Serial.println("| FAIL_EEG  - Провал: нет бета-ритма (рассеянное внимание)  |");
+  Serial.println("| A CYCLE   - Полный автоматический цикл (3.5 мин)          |");
+  Serial.println("| I         - Показать текущее состояние (Info)             |");
+  Serial.println("| H         - Эта справка                                   |");
+  Serial.println("| R         - Сброс системы и перезапуск калибровки         |");
+  Serial.println("+-----------------------------------------------------------+");
+  Serial.println("\nПодключите: Grove LED Bar (пины 2, 3) и Серво (пин 9)");
+  Serial.println("Откройте Serial Plotter для просмотра графиков!\n");
 }
 
 // ============================================================================
@@ -376,8 +439,6 @@ void printHelp() {
 // ============================================================================
 void printStatus() {
   Serial.println("\n=== ТЕКУЩЕЕ СОСТОЯНИЕ ===");
-  Serial.print("Режим: ");
-  Serial.println(autoMode ? "АВТОМАТИЧЕСКИЙ" : "РУЧНОЙ");
   Serial.print("Состояние: ");
   switch (currentState) {
     case CALIBRATION: Serial.println("КАЛИБРОВКА"); break;
@@ -406,8 +467,11 @@ void printStatus() {
   Serial.print(" из ");
   Serial.print(validTimeCnt);
   if (validTimeCnt > 0) {
+    float ratio = (float)betaAboveCnt / validTimeCnt * 100;
     Serial.print(" (");
-    Serial.print((float)betaAboveCnt / validTimeCnt * 100, 1);
+    Serial.print(ratio, 1);
+    Serial.print("%, нужно >");
+    Serial.print(BETA_SUCCESS_RATIO * 100, 0);
     Serial.println("%)");
   } else {
     Serial.println();
@@ -661,18 +725,18 @@ void loop() {
   // === ОБРАБОТКА КОМАНД ИЗ SERIAL ===
   processSerialCommand();
   
-  // === АВТОМАТИЧЕСКИЙ РЕЖИМ ===
-  if (autoMode) {
-    updateAutoMode();
+  // === АВТОМАТИЧЕСКИЙ ЦИКЛ (A CYCLE) ===
+  if (autoCycleRunning) {
+    updateAutoCycle();
   }
   
   // === СГЛАЖИВАНИЕ ЭМГ ===
   emgSmoothed = smoothEMG(emgEmulated);
   
-  // === ОТПРАВКА ДАННЫХ (каждые 100 мс) ===
-  if (currentTime - lastSerialSend >= SERIAL_INTERVAL) {
+  // === ОТПРАВКА ДАННЫХ (каждые 200 мс для графиков) ===
+  if (currentTime - lastGraphUpdate >= GRAPH_INTERVAL) {
     sendToPC();
-    lastSerialSend = currentTime;
+    lastGraphUpdate = currentTime;
   }
   
   // === ОБНОВЛЕНИЕ СЕРВО (каждые 200 мс) ===
