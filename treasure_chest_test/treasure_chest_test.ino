@@ -45,7 +45,7 @@ const int PIN_SERVO        = 9;   // Сервопривод
 // ТАЙМИНГИ (в миллисекундах)
 // ============================================================================
 const unsigned long TIME_CALIBRATION    = 30000;  // Калибровка: 30 сек
-const unsigned long TIME_TRAINING       = 180000; // Тренинг: 3 минуты
+const unsigned long TIME_TRAINING       = 30000; // Тренинг: 3 минуты
 const unsigned long SERVO_INTERVAL      = 200;    // Обновление серво: 200 мс
 const unsigned long EMG_SMOOTH_WINDOW   = 500;    // Окно сглаживания ЭМГ: 500 мс
 const unsigned long GRAPH_INTERVAL      = 200;    // Обновление графика: 200 мс
