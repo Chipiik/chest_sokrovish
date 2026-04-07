@@ -148,7 +148,6 @@ unsigned long lastStatusPrint = 0;
 void initHardware() {
   // LED Bar
   bar.begin();
-  bar.setBrightness(10);
   bar.setLevel(0);
   
   // Серво
