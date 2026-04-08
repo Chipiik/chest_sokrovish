@@ -1,46 +1,80 @@
 ```
-# Compiled and build artifacts
-*.ino.cpp
+# Arduino build artifacts
 *.hex
 *.elf
 *.bin
-*.o
-*.obj
-*.a
-*.so
-*.dylib
-*.dll
-*.exe
+*.map
+*.sym
+
+# Build directories
 build/
 dist/
 
 # Dependencies
-.libs/
-lib/
-dependencies/
-node_modules/
-venv/
-.venv/
-.env
-.env.local
-.env.*
+libraries/
 
-# Logs and temp files
-*.log
+# Temporary files
 *.tmp
-*.swp
-*.swo
 *.bak
 *.~
-*~
+Thumbs.db
+.DS_Store
 
-# Editors
+# Environment files
+.env
+.env.local
+*.env.*
+
+# IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# OS
-.DS_Store
-Thumbs.db
+# Logs
+*.log
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Python artifacts (if any Python scripts in project)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Node.js (if any JS tools used)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Java/Maven (if any Java tools used)
+target/
+.gradle/
+*.class
+*.jar
+*.war
+
+# C/C++ (if any native compilation)
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dll
+*.dylib
+
+# Compressed files
+*.zip
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.gz
+*.rar
+*.7z
 ```
