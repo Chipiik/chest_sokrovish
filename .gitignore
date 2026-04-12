@@ -1,67 +1,80 @@
 ```
-# Compiled and build artifacts
-*.o
-*.obj
-*.exe
-*.dll
-*.so
-*.a
-*.out
+# Arduino build artifacts
+*.hex
+*.elf
+*.bin
+*.map
+*.sym
+
+# Build directories
+build/
+dist/
 
 # Dependencies
-node_modules/
-venv/
-.venv/
-__pycache__/
-.mypy_cache/
-.pytest_cache/
-target/
-.gradle/
+libraries/
 
-# Logs and temp files
-*.log
+# Temporary files
 *.tmp
-*.swp
+*.bak
+*.~
+Thumbs.db
+.DS_Store
 
-# Environment
+# Environment files
 .env
 .env.local
 *.env.*
 
-# Editors
+# IDE files
 .vscode/
 .idea/
+*.swp
+*.swo
 
-# System files
-.DS_Store
-Thumbs.db
+# Logs
+*.log
 
 # Coverage
 coverage/
 htmlcov/
 .coverage
 
+# Python artifacts (if any Python scripts in project)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Node.js (if any JS tools used)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Java/Maven (if any Java tools used)
+target/
+.gradle/
+*.class
+*.jar
+*.war
+
+# C/C++ (if any native compilation)
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dll
+*.dylib
+
 # Compressed files
 *.zip
-*.gz
-*.tar
-*.tgz
-*.bz2
-*.xz
-*.7z
-*.rar
-*.zst
-*.lz4
-*.lzh
-*.cab
-*.arj
-*.rpm
-*.deb
-*.Z
-*.lz
-*.lzo
 *.tar.gz
 *.tar.bz2
 *.tar.xz
-*.tar.zst
+*.gz
+*.rar
+*.7z
 ```
